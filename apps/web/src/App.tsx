@@ -906,6 +906,7 @@ function InspectorPanel({
       </div>
 
       {debugFlags.inspector && <SessionTotalsCard traces={traces} />}
+      {debugFlags.inspector && <ErrorsCard traces={traces} />}
 
       {debugFlags.inspector && (
         <>
@@ -998,6 +999,41 @@ function InspectorPanel({
         onDelete={onDeleteSource}
       />
     </aside>
+  );
+}
+
+function ErrorsCard({ traces }: { traces: TurnTraceDto[] }) {
+  const errs = traces
+    .filter((t) => typeof (t.payload as { error?: unknown }).error === 'string')
+    .slice(-10)
+    .reverse();
+  if (errs.length === 0) return null;
+  return (
+    <>
+      <div style={styles.panelHeader}>
+        <span style={{ color: '#b00020' }}>Errors ({errs.length})</span>
+        <span style={styles.debugTag}>debug</span>
+      </div>
+      <div style={styles.llmList}>
+        {errs.map((t) => {
+          const p = t.payload as { error?: string; callSite?: string };
+          return (
+            <div key={t.id} style={{ ...styles.llmRow, borderLeftColor: '#b00020' }}>
+              <div style={styles.llmRowHeader}>
+                <span style={styles.llmCallSite}>
+                  {t.phase}
+                  {p.callSite ? ` · ${p.callSite}` : ''}
+                </span>
+                <span style={styles.llmTime}>
+                  {new Date(t.startedAt).toLocaleTimeString()} · {t.durationMs}ms
+                </span>
+              </div>
+              <div style={styles.panelErr}>{p.error}</div>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
