@@ -1,0 +1,96 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+model Session {
+  id              String    @id @default(cuid())
+  activeBlockId   String
+  workflowVersion Int
+  state           Json      @default("{}")
+  endedAt         DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  messages        Message[]
+  memories        Memory[]
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  sessionId String
+  role      String
+  content   String
+  meta      Json?
+  createdAt DateTime @default(now())
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+model KnowledgeSource {
+  id        String           @id @default(cuid())
+  type      String
+  uri       String
+  title     String?
+  namespace String           @default("default")
+  status    String           @default("pending")
+  error     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  chunks    KnowledgeChunk[]
+
+  @@index([namespace, status])
+}
+
+model KnowledgeChunk {
+  id        String                       @id @default(cuid())
+  sourceId  String
+  text      String
+  embedding Unsupported("vector(1536)")?
+  meta      Json?
+  createdAt DateTime                     @default(now())
+  source    KnowledgeSource              @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId])
+}
+
+model WebhookEvent {
+  id        String   @id @default(cuid())
+  sessionId String?
+  type      String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+  @@index([type, createdAt])
+}
+
+model Memory {
+  id        String   @id @default(cuid())
+  sessionId String
+  content   String
+  createdAt DateTime @default(now())
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+model TurnTrace {
+  id         String   @id @default(cuid())
+  sessionId  String
+  messageId  String?
+  phase      String
+  startedAt  DateTime
+  durationMs Int
+  payload    Json
+  createdAt  DateTime @default(now())
+
+  @@index([sessionId, startedAt])
+  @@index([messageId])
+}

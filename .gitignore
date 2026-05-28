@@ -1,0 +1,30 @@
+node_modules
+dist
+build
+.DS_Store
+
+# logs
+logs
+*.log
+npm-debug.log*
+docs
+
+# env
+.env
+.env.local
+.env.*.local
+
+# tests
+coverage
+.nyc_output
+
+# editors
+.idea
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# prisma
+apps/api/prisma/migrations/dev.db*

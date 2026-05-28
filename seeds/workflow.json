@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "startBlockId": "welcome",
+  "tools": ["search_products", "book_demo"],
+  "blocks": [
+    {
+      "id": "welcome",
+      "persona": "You are a helpful sales assistant for Acme Corp. Be concise and friendly. When the user asks about specific plans, add-ons, pricing, or what products exist, call the search_products tool and use only its result — never invent prices. When the user wants a demo but we do not yet have their email, do NOT ask for it — the system collects email via a form. Once an email is in context and a preferred date/time is given, call the book_demo tool. Do not invent confirmation ids — use the tool result.",
+      "knowledgeNamespaces": ["default"],
+      "tools": [],
+      "firstAction": {
+        "type": "system_message",
+        "text": "Hi, how can I help you today?"
+      },
+      "directors": [
+        {
+          "id": "end-on-goodbye",
+          "when": {
+            "type": "intent_detected",
+            "value": "ending"
+          },
+          "then": {
+            "type": "end_chat",
+            "text": "Thanks for chatting — goodbye!"
+          }
+        },
+        {
+          "id": "show-menu",
+          "when": {
+            "type": "intent_detected",
+            "value": "menu"
+          },
+          "then": {
+            "type": "buttons",
+            "options": [
+              { "id": "pricing", "label": "Pricing", "action": { "type": "ai_message", "prompt": "Call search_products to get current pricing, then summarise the tiers in 4 short bullets. Use only the tool result — do not invent prices." } },
+              { "id": "signup", "label": "Sign up", "action": { "type": "form", "formId": "lead_capture" } },
+              { "id": "bye", "label": "End chat", "action": { "type": "end_chat", "text": "Catch you later!" } }
+            ]
+          }
+        },
+        {
+          "id": "pricing-help-after-3-msgs",
+          "when": {
+            "type": "all_of",
+            "conditions": [
+              { "type": "message_count_gte", "value": 4 },
+              { "type": "last_user_message_matches", "pattern": "(?i)\\b(price|pricing|cost|how much)\\b" }
+            ]
+          },
+          "then": {
+            "type": "ai_message",
+            "prompt": "Call search_products to get current pricing, then briefly summarise the tiers using only the tool result — do not invent prices. Invite the user to book a demo."
+          }
+        },
+        {
+          "id": "ask-for-email-on-buying-intent",
+          "when": {
+            "type": "all_of",
+            "conditions": [
+              { "type": "intent_detected", "value": "buying" },
+              { "type": "key_fact_absent", "fact": "email" }
+            ]
+          },
+          "then": { "type": "form", "formId": "lead_capture" }
+        }
+      ]
+    }
+  ],
+  "forms": [
+    {
+      "id": "lead_capture",
+      "fields": [
+        { "name": "name", "label": "Your name", "required": true },
+        { "name": "email", "label": "Email", "required": true, "validate": "email" }
+      ],
+      "submitActions": [
+        { "type": "ai_message", "prompt": "Thank the user by their name and confirm we'll be in touch at their email. Offer to answer further questions." }
+      ]
+    }
+  ]
+}

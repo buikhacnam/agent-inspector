@@ -1,0 +1,21 @@
+{
+  "name": "agent-x",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm-run-all -p dev:api dev:web",
+    "dev:api": "npm run start:dev -w @agent-x/api",
+    "dev:web": "npm run dev -w @agent-x/web",
+    "build": "npm run build -w @agent-x/api && npm run build -w @agent-x/web",
+    "prisma": "npm run prisma -w @agent-x/api",
+    "db:migrate": "npm run db:migrate -w @agent-x/api",
+    "db:generate": "npm run db:generate -w @agent-x/api"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  }
+}
