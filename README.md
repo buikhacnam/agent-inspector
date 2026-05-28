@@ -1,5 +1,6 @@
 # Agent Inspector
 
+<img src='./assets/sample.png' />
 
 ## Stack
 
