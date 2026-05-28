@@ -145,6 +145,8 @@ export class ActionService {
 
     let full = '';
     const toolCalls: { name: string; args: unknown; result?: unknown }[] = [];
+    const toolTraceOn = this.inspectorFlags.on('tool');
+    const toolTimings = new Map<string, number>();
     let resolveMessageId: (id: string | null) => void = () => {};
     const messageIdPromise = new Promise<string | null>((resolve) => {
       resolveMessageId = resolve;
@@ -178,6 +180,7 @@ export class ActionService {
       } else if (part.type === 'tool-call') {
         const tc = part as { toolName: string; args: unknown };
         toolCalls.push({ name: tc.toolName, args: tc.args });
+        if (toolTraceOn) toolTimings.set(tc.toolName, Date.now());
         if (ctx.write)
           ctx.write({ type: 'tool_call', name: tc.toolName, args: tc.args });
         this.logger.log(`tool-call: ${tc.toolName}`);
@@ -187,6 +190,21 @@ export class ActionService {
           (c) => c.name === tr.toolName && c.result === undefined,
         );
         if (entry) entry.result = tr.result;
+        if (toolTraceOn) {
+          const startMs = toolTimings.get(tr.toolName) ?? Date.now();
+          toolTimings.delete(tr.toolName);
+          this.inspector.record({
+            sessionId: ctx.sessionId,
+            phase: 'tool',
+            startedAt: new Date(startMs),
+            durationMs: Date.now() - startMs,
+            payload: {
+              name: tr.toolName,
+              args: (entry?.args ?? null) as Prisma.InputJsonValue,
+              result: tr.result as Prisma.InputJsonValue,
+            },
+          });
+        }
         if (ctx.write)
           ctx.write({
             type: 'tool_result',

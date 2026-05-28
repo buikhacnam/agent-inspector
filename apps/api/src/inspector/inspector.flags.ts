@@ -8,6 +8,8 @@ export type DebugFlags = {
   llm: boolean;
   prompt: boolean;
   timing: boolean;
+  pipeline: boolean;
+  tool: boolean;
 };
 
 function bool(v: unknown): boolean {
@@ -24,6 +26,8 @@ export class InspectorFlags implements OnModuleInit {
     llm: false,
     prompt: false,
     timing: false,
+    pipeline: false,
+    tool: false,
   };
 
   constructor(private readonly config: ConfigService) {}
@@ -44,6 +48,8 @@ export class InspectorFlags implements OnModuleInit {
       llm: master && bool(this.config.get('DEBUG_LLM_TRACE')),
       prompt: master && bool(this.config.get('DEBUG_PROMPT_CAPTURE')),
       timing: master && bool(this.config.get('DEBUG_PHASE_TIMING')),
+      pipeline: master && bool(this.config.get('DEBUG_PIPELINE_TRACE')),
+      tool: master && bool(this.config.get('DEBUG_TOOL_TRACE')),
     };
     if (master) {
       this.logger.log(`inspector enabled: ${JSON.stringify(this.flags)}`);

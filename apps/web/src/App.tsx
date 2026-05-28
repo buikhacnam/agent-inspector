@@ -60,6 +60,8 @@ export function App() {
     llm: false,
     prompt: false,
     timing: false,
+    pipeline: false,
+    tool: false,
   });
   const [lastTurnMeta, setLastTurnMeta] = useState<{
     ragHitIds?: string[];
@@ -586,9 +588,7 @@ function HomeView({
     <div style={styles.home}>
       <div style={styles.homeCard}>
         <h2 style={styles.homeTitle}>Agent-X</h2>
-        <button type="button" style={{ ...styles.btn, alignSelf: 'stretch' }} onClick={onNew}>
-          + New session
-        </button>
+        
         <div style={styles.panelHeader}>
           Recent sessions ({sessions.length})
           <button type="button" style={styles.linkBtn} onClick={() => void onRefresh()}>
@@ -651,7 +651,7 @@ function SessionsPanel({
         </button>
       </div>
       <button type="button" style={styles.btn} onClick={onNew} disabled={disabled}>
-        + New session
+        New session
       </button>
       <div style={styles.sourceList}>
         {sessions.length === 0 && <div style={styles.empty}>none yet</div>}
@@ -905,6 +905,8 @@ function InspectorPanel({
         </div>
       </div>
 
+      {debugFlags.inspector && <SessionTotalsCard traces={traces} />}
+
       {debugFlags.inspector && (
         <>
           <div style={styles.panelHeader}>
@@ -945,6 +947,8 @@ function InspectorPanel({
       {debugFlags.llm && <LlmCallsCard traces={traces} promptVisible={debugFlags.prompt} />}
       {debugFlags.rag && <RagHitsCard traces={traces} />}
       {debugFlags.director && <DirectorTraceCard traces={traces} />}
+      {debugFlags.tool && <ToolCallsCard traces={traces} />}
+      {debugFlags.pipeline && <PipelineCard traces={traces} />}
 
       <div style={styles.panelHeader}>Session state</div>
       <pre style={styles.statePre}>{JSON.stringify(state, null, 2)}</pre>
@@ -994,6 +998,50 @@ function InspectorPanel({
         onDelete={onDeleteSource}
       />
     </aside>
+  );
+}
+
+function SessionTotalsCard({ traces }: { traces: TurnTraceDto[] }) {
+  const llm = traces.filter((t) => t.phase === 'llm');
+  let cost = 0;
+  let prompt = 0;
+  let completion = 0;
+  for (const t of llm) {
+    const p = t.payload as LlmTracePayload;
+    if (typeof p.costUsd === 'number') cost += p.costUsd;
+    prompt += p.promptTokens ?? 0;
+    completion += p.completionTokens ?? 0;
+  }
+  const totalDuration = traces.reduce((acc, t) => acc + (t.durationMs ?? 0), 0);
+  return (
+    <>
+      <div style={styles.panelHeader}>
+        <span>Session totals</span>
+        <span style={styles.debugTag}>debug</span>
+      </div>
+      <div style={styles.ragMeta}>
+        <div>
+          <span style={styles.kvKey}>llm calls:</span>{' '}
+          <span style={styles.kvVal}>{llm.length}</span>
+          {'  '}
+          <span style={styles.kvKey}>cost:</span>{' '}
+          <span style={styles.kvVal}>${cost.toFixed(5)}</span>
+        </div>
+        <div>
+          <span style={styles.kvKey}>tokens:</span>{' '}
+          <span style={styles.kvVal}>
+            {prompt.toLocaleString()}p / {completion.toLocaleString()}c
+          </span>
+        </div>
+        <div>
+          <span style={styles.kvKey}>traces:</span>{' '}
+          <span style={styles.kvVal}>{traces.length}</span>
+          {'  '}
+          <span style={styles.kvKey}>total phase time:</span>{' '}
+          <span style={styles.kvVal}>{totalDuration.toLocaleString()}ms</span>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1151,6 +1199,14 @@ function RagHitsCard({ traces }: { traces: TurnTraceDto[] }) {
   const last = [...traces].reverse().find((t) => t.phase === 'rag');
   const p = (last?.payload ?? {}) as RagTracePayload;
   const hits = p.hits ?? [];
+  const scores = hits.map((h) => h.score).filter((s): s is number => typeof s === 'number');
+  const stats = scores.length
+    ? {
+        min: Math.min(...scores),
+        max: Math.max(...scores),
+        mean: scores.reduce((a, b) => a + b, 0) / scores.length,
+      }
+    : null;
   return (
     <>
       <div style={styles.panelHeader}>
@@ -1169,6 +1225,14 @@ function RagHitsCard({ traces }: { traces: TurnTraceDto[] }) {
           <span style={styles.kvKey}>namespaces:</span>{' '}
           <span style={styles.kvVal}>{(p.namespaces ?? []).join(', ') || '—'}</span>
         </div>
+        {stats && (
+          <div>
+            <span style={styles.kvKey}>scores:</span>{' '}
+            <span style={styles.kvVal}>
+              min {stats.min.toFixed(3)} · mean {stats.mean.toFixed(3)} · max {stats.max.toFixed(3)}
+            </span>
+          </div>
+        )}
         {p.skipReason && (
           <div>
             <span style={styles.kvKey}>skipped:</span>{' '}
@@ -1329,14 +1393,25 @@ function LlmCallsCard({
   traces: TurnTraceDto[];
   promptVisible: boolean;
 }) {
-  const llmTraces = traces
-    .filter((t) => t.phase === 'llm')
-    .slice(-10)
-    .reverse();
+  const allLlm = traces.filter((t) => t.phase === 'llm');
+  const llmTraces = allLlm.slice(-10).reverse();
   const totalCost = llmTraces.reduce((acc, t) => {
     const c = (t.payload as LlmTracePayload).costUsd;
     return acc + (typeof c === 'number' ? c : 0);
   }, 0);
+
+  const bySite = new Map<string, { count: number; cost: number; ms: number }>();
+  for (const t of allLlm) {
+    const p = t.payload as LlmTracePayload;
+    const site = p.callSite ?? 'unknown';
+    const row = bySite.get(site) ?? { count: 0, cost: 0, ms: 0 };
+    row.count += 1;
+    if (typeof p.costUsd === 'number') row.cost += p.costUsd;
+    row.ms += t.durationMs ?? 0;
+    bySite.set(site, row);
+  }
+  const siteRows = [...bySite.entries()].sort((a, b) => b[1].cost - a[1].cost);
+
   return (
     <>
       <div style={styles.panelHeader}>
@@ -1346,6 +1421,18 @@ function LlmCallsCard({
         </span>
         <span style={styles.debugTag}>debug</span>
       </div>
+      {siteRows.length > 0 && (
+        <div style={styles.ragMeta}>
+          {siteRows.map(([site, r]) => (
+            <div key={site} style={styles.llmMeta}>
+              <span style={styles.llmCallSite}>{site}</span>
+              <span>{r.count}×</span>
+              <span>${r.cost.toFixed(5)}</span>
+              <span>{r.ms.toLocaleString()}ms</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={styles.llmList}>
         {llmTraces.length === 0 && <div style={styles.empty}>no calls yet</div>}
         {llmTraces.map((t) => (
@@ -1432,6 +1519,110 @@ function EventsPanel({ events }: { events: WebhookEventDto[] }) {
         ))}
       </div>
     </aside>
+  );
+}
+
+type ToolTracePayload = { name?: string; args?: unknown; result?: unknown; error?: string };
+
+function ToolCallsCard({ traces }: { traces: TurnTraceDto[] }) {
+  const toolTraces = traces.filter((t) => t.phase === 'tool').slice(-20).reverse();
+  return (
+    <>
+      <div style={styles.panelHeader}>
+        <span>Tool calls ({toolTraces.length})</span>
+        <span style={styles.debugTag}>debug</span>
+      </div>
+      <div style={styles.llmList}>
+        {toolTraces.length === 0 && <div style={styles.empty}>no tool calls yet</div>}
+        {toolTraces.map((t) => (
+          <ToolCallRow key={t.id} trace={t} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function ToolCallRow({ trace }: { trace: TurnTraceDto }) {
+  const [open, setOpen] = useState(false);
+  const p = trace.payload as ToolTracePayload;
+  return (
+    <div
+      style={{ ...styles.llmRow, borderLeftColor: PHASE_COLORS.tool }}
+      onClick={() => setOpen((v) => !v)}
+    >
+      <div style={styles.llmRowHeader}>
+        <span style={styles.llmCallSite}>{p.name ?? 'tool'}</span>
+        <span style={styles.llmTime}>
+          {new Date(trace.startedAt).toLocaleTimeString()} · {trace.durationMs}ms
+        </span>
+      </div>
+      {p.error && <div style={styles.panelErr}>{p.error}</div>}
+      {open && (
+        <div style={styles.llmDetail}>
+          <div style={styles.llmDetailLabel}>args</div>
+          <pre style={styles.llmPre}>{JSON.stringify(p.args ?? null, null, 2)}</pre>
+          <div style={styles.llmDetailLabel}>result</div>
+          <pre style={styles.llmPre}>{JSON.stringify(p.result ?? null, null, 2)}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type ExtractPayload = { intent?: string | null; sentiment?: string | null; factCount?: number };
+type ModeratePayload = { flagged?: boolean; reason?: string | null };
+
+function PipelineCard({ traces }: { traces: TurnTraceDto[] }) {
+  const turn = pickLastTurnTraces(traces);
+  const moderate = [...turn].reverse().find((t) => t.phase === 'moderate');
+  const extract = [...turn].reverse().find((t) => t.phase === 'extract');
+  const persist = [...turn].reverse().find((t) => t.phase === 'persist');
+  if (!moderate && !extract && !persist) {
+    return (
+      <>
+        <div style={styles.panelHeader}>
+          <span>Pipeline</span>
+          <span style={styles.debugTag}>debug</span>
+        </div>
+        <div style={styles.empty}>no pipeline traces this turn</div>
+      </>
+    );
+  }
+  const mp = (moderate?.payload ?? {}) as ModeratePayload;
+  const ep = (extract?.payload ?? {}) as ExtractPayload;
+  return (
+    <>
+      <div style={styles.panelHeader}>
+        <span>Pipeline</span>
+        <span style={styles.debugTag}>debug</span>
+      </div>
+      <div style={styles.ragMeta}>
+        {moderate && (
+          <div>
+            <span style={styles.kvKey}>moderate:</span>{' '}
+            <span style={{ ...styles.kvVal, color: mp.flagged ? '#b00020' : '#0a7d2c' }}>
+              {mp.flagged ? `flagged (${mp.reason ?? '—'})` : 'pass'}
+            </span>{' '}
+            <span style={styles.kvKey}>· {moderate.durationMs}ms</span>
+          </div>
+        )}
+        {extract && (
+          <div>
+            <span style={styles.kvKey}>extract:</span>{' '}
+            <span style={styles.kvVal}>
+              intent={ep.intent ?? '—'} · sentiment={ep.sentiment ?? '—'} · facts={ep.factCount ?? 0}
+            </span>{' '}
+            <span style={styles.kvKey}>· {extract.durationMs}ms</span>
+          </div>
+        )}
+        {persist && (
+          <div>
+            <span style={styles.kvKey}>persist:</span>{' '}
+            <span style={styles.kvVal}>{persist.durationMs}ms</span>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 

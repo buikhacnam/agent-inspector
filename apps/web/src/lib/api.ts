@@ -60,6 +60,8 @@ export interface DebugFlags {
   llm: boolean;
   prompt: boolean;
   timing: boolean;
+  pipeline: boolean;
+  tool: boolean;
 }
 
 export interface TurnTraceDto {
@@ -92,7 +94,7 @@ export async function getDebugFlags(): Promise<DebugFlags> {
     if (!res.ok) throw new Error('flags fetch failed');
     return res.json();
   } catch {
-    return { inspector: false, director: false, rag: false, llm: false, prompt: false, timing: false };
+    return { inspector: false, director: false, rag: false, llm: false, prompt: false, timing: false, pipeline: false, tool: false };
   }
 }
 

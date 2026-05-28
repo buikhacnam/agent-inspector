@@ -59,7 +59,7 @@ export class ExperienceService {
     // Moderation runs synchronously — we need to short-circuit before any LLM cost.
     const modStart = Date.now();
     const mod = await this.guardian.moderate(text);
-    if (this.inspectorFlags.on('timing')) {
+    if (this.inspectorFlags.on('timing') || this.inspectorFlags.on('pipeline')) {
       this.inspector.record({
         sessionId,
         phase: 'moderate',
@@ -108,7 +108,7 @@ export class ExperienceService {
     // so there is no clobber.
     const extractStart = Date.now();
     const extraction = await this.guardian.extract(text, priorState, { sessionId });
-    if (this.inspectorFlags.on('timing')) {
+    if (this.inspectorFlags.on('timing') || this.inspectorFlags.on('pipeline')) {
       this.inspector.record({
         sessionId,
         phase: 'extract',
